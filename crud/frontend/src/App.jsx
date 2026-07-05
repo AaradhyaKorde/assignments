@@ -1,100 +1,123 @@
-import {useEffect, useState} from "react";
-import "./App.css";
+import { useEffect, useRef, useState } from "react";
+import FeedCard from "./FeedCard";
 
-function App(){
-    const [users, setUsers] = useState([]);
-    const [name, setName] = useState("");
-    const [email, setEmail] =useState("");
-    const [age, setAge] = useState("");
-    const [editId, setEditId] = useState(null)
+const API = "http://localhost:3000/feeds";
+const LIMIT = 5;
 
-    const getUsers = async () =>{
-        const response = await fetch("http://localhost:3000/users");
-        const data = await response.json();
-        setUsers(data);
-    
-    }
-    const addUser = async () => {
-        await fetch("http://localhost:3000/users", {
-            method: "POST",
-            headers:{
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({name, age, email}),
-        })
-        getUsers();
-        setName("");
-        setEmail("");
-        setAge("");
-    }
+function App() {
+  const [feeds, setFeeds] = useState([]);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [user, setUser] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
-    const UpdateUser = async () => {
-        await fetch(`http://localhost:3000/users/${editId}`, {
-            method: "PUT",
-            headers:{
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({name, age, email}),
-        })
-        getUsers();
-        setName("");
-        setEmail("");
-        setAge("");
-        setEditId(null);
+  const page = useRef(1);
+  const loadingRef = useRef(false);
+  const hasMoreRef = useRef(true);
+
+  const loadMore = async (reset = false) => {
+    if (loadingRef.current || (!reset && !hasMoreRef.current)) return;
+
+    loadingRef.current = true;
+    setLoading(true);
+
+    try {
+      if (reset) {
+        page.current = 1;
+        hasMoreRef.current = true;
+        setHasMore(true);
+      }
+
+      const res = await fetch(`${API}?page=${page.current}&limit=${LIMIT}`);
+      const data = await res.json();
+
+      setFeeds((prev) => (reset ? data : [...prev, ...data]));
+      hasMoreRef.current = data.length === LIMIT;
+      setHasMore(hasMoreRef.current);
+      page.current += 1;
+    } catch (err) {
+      console.log(err);
     }
 
-    const deleteUser = async (id) => {
-        await fetch(`http://localhost:3000/users/${id}`, {
-            method: "DELETE",
-            headers: {
-                "Content-Type": "application/json"
-            }
-        });
-        getUsers();
-        setName("");
-        setEmail("");
-        setAge("");
-        setEditId(null);
-    }
+    loadingRef.current = false;
+    setLoading(false);
+  };
 
-    const editUser = (user)=>{
-        setName(user.name);
-        setEmail(user.email);
-        setAge(user.age);
+  const refreshFeeds = () => loadMore(true);
 
-        setEditId(user._id);
+  const addFeed = async () => {
+    await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, body, user }),
+    });
 
-    }
+    setTitle("");
+    setBody("");
+    setUser("");
+    refreshFeeds();
+  };
 
-    useEffect(()=>{
-        getUsers();
-    }, []);
+  useEffect(() => {
+    loadMore();
 
-    return (
-        <div>
-            <h1>Crud</h1>
-            <form >
-                <input type="text" placeholder="name" value={name} onChange={(e) =>setName(e.target.value)} />
-                <input type="text" placeholder="email" value={email} onChange={(e) =>setEmail(e.target.value)} />
-                <input type="text" placeholder="25" value={age} onChange={(e) =>setAge(e.target.value)} />
-                <button type="submit" onClick={editId ? UpdateUser : addUser}>{editId ? "Update User" : "Add User"}</button>
-            </form>
-        {
-            users.map((user)=>(
-                <div key={user._id}>
-                    <h2>{user.name}</h2>
-                    <p>{user.email}</p>
-                    <p>{user.age}</p>
-                    <button onClick={()=> {editUser(user)}}>Edit</button>
-                    <button onClick={()=> {deleteUser(user._id)}}>Delete</button>
+    const onScroll = () => {
+      if (
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 100
+      ) {
+        loadMore();
+      }
+    };
 
-                </div>
-            ))
-        }
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
-    </div>
-    );
+  return (
+    <>
+      <header>
+        <h1>Feed App</h1>
+        <p className="muted">Share posts and join the conversation</p>
+      </header>
 
+      <section className="card stack">
+        <input
+          type="text"
+          placeholder="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="What's on your mind?"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Your name"
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
+        />
+        <button type="button" className="primary" onClick={addFeed}>
+          Post
+        </button>
+      </section>
+
+      <section className="stack feeds">
+        {feeds.map((feed) => (
+          <FeedCard key={feed._id} feed={feed} refreshFeeds={refreshFeeds} />
+        ))}
+      </section>
+
+      {loading && <p className="muted center">Loading...</p>}
+      {!hasMore && feeds.length > 0 && (
+        <p className="muted center">You're all caught up</p>
+      )}
+    </>
+  );
 }
 
 export default App;
